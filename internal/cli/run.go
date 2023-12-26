@@ -46,8 +46,9 @@ using the '--host' parameter. This should be a comma separated list of hostnames
 func init() {
 	rootCmd.AddCommand(runCmd)
 
-	runCmd.Flags().Int("replicas", 4, "number of replicas to run")
-	runCmd.Flags().Int("clients", 1, "number of clients to run")
+	runCmd.Flags().Int("shards", 2, "number of shards to run")
+	runCmd.Flags().Int("replicas", 8, "number of replicas to run")
+	runCmd.Flags().Int("clients", 2, "number of clients to run")
 	runCmd.Flags().Int("batch-size", 1, "number of commands to batch together in each block")
 	runCmd.Flags().Int("payload-size", 0, "size in bytes of the command payload")
 	runCmd.Flags().Int("max-concurrent", 4, "maximum number of concurrent commands per client")
@@ -100,6 +101,7 @@ func runController() {
 
 	experiment := orchestration.Experiment{
 		Logger:      logging.New("ctrl"),
+		NumShards:   viper.GetInt("shards"),
 		NumReplicas: viper.GetInt("replicas"),
 		NumClients:  viper.GetInt("clients"),
 		Duration:    viper.GetDuration("duration"),

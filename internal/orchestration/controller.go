@@ -19,6 +19,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// ShardID is the type used to identify shards.
+type ShardID uint32
+
 // HostConfig specifies the number of replicas and clients that should be started on a specific host.
 type HostConfig struct {
 	Name            string
@@ -35,6 +38,7 @@ type Experiment struct {
 
 	Logger logging.Logger
 
+	NumShards   int
 	NumReplicas int
 	NumClients  int
 	Duration    time.Duration
@@ -44,6 +48,18 @@ type Experiment struct {
 	Byzantine   map[string]int // number of replicas to assign to each byzantine strategy
 	Output      string         // path to output folder
 
+	// the shard associated with each replica.
+	shardsToReplicas map[ShardID][]hotstuff.ID
+	// the shard associated with each client.
+	shardsToClient map[ShardID][]hotstuff.ID
+	// the shard replica belongs to.
+	replicaToShard map[hotstuff.ID]ShardID
+	// the shard client belongs to.
+	clientToShard map[hotstuff.ID]ShardID
+	// the host replica belongs to.
+	replicaToHost map[hotstuff.ID]string
+	// the host client belongs to.
+	clientToHost map[hotstuff.ID]string
 	// the host associated with each replica.
 	hostsToReplicas map[string][]hotstuff.ID
 	// the host associated with each client.
@@ -181,6 +197,12 @@ func (e *Experiment) assignReplicasAndClients() (err error) {
 	e.hostsToReplicas = make(map[string][]hotstuff.ID)
 	e.replicaOpts = make(map[hotstuff.ID]*orchestrationpb.ReplicaOpts)
 	e.hostsToClients = make(map[string][]hotstuff.ID)
+	e.shardsToReplicas = make(map[ShardID][]hotstuff.ID)
+	e.shardsToClient = make(map[ShardID][]hotstuff.ID)
+	e.replicaToShard = make(map[hotstuff.ID]ShardID)
+	e.clientToShard = make(map[hotstuff.ID]ShardID)
+	e.replicaToHost = make(map[hotstuff.ID]string)
+	e.clientToHost = make(map[hotstuff.ID]string)
 	replicaLocationInfo := make(map[uint32]string)
 	nextReplicaID := hotstuff.ID(1)
 	nextClientID := hotstuff.ID(1)
@@ -277,6 +299,7 @@ func (e *Experiment) assignReplicasAndClients() (err error) {
 			// all replicaOpts share the same LocationInfo map, which is progressively updated
 			replicaOpts.LocationInfo = replicaLocationInfo
 			e.hostsToReplicas[host] = append(e.hostsToReplicas[host], nextReplicaID)
+			e.replicaToHost[nextReplicaID] = host
 			e.replicaOpts[nextReplicaID] = replicaOpts
 			e.Logger.Infof("replica %d assigned to host %s", nextReplicaID, host)
 			nextReplicaID++
@@ -284,9 +307,22 @@ func (e *Experiment) assignReplicasAndClients() (err error) {
 
 		for i := 0; i < numClients; i++ {
 			e.hostsToClients[host] = append(e.hostsToClients[host], nextClientID)
+			e.clientToHost[nextClientID] = host
 			e.Logger.Infof("client %d assigned to host %s", nextClientID, host)
 			nextClientID++
 		}
+	}
+
+	for i := 0; i < e.NumReplicas; i++ {
+		shardID := ShardID(i % e.NumShards)
+		e.shardsToReplicas[shardID] = append(e.shardsToReplicas[shardID], hotstuff.ID(i+1))
+		e.replicaToShard[hotstuff.ID(i+1)] = shardID
+	}
+
+	for i := 0; i < e.NumClients; i++ {
+		shardID := ShardID(i % e.NumShards)
+		e.shardsToClient[shardID] = append(e.shardsToReplicas[shardID], hotstuff.ID(i+1))
+		e.clientToShard[hotstuff.ID(i+1)] = shardID
 	}
 
 	// TODO: warn if not all clients/replicas were assigned
@@ -298,6 +334,10 @@ type assignmentsFileContents struct {
 	HostsToReplicas map[string][]hotstuff.ID
 	// the host associated with each client.
 	HostsToClients map[string][]hotstuff.ID
+	// the shard associated with each replica.
+	ShardsToReplicas map[ShardID][]hotstuff.ID
+	// the shard associated with each client.
+	ShardsToClient map[ShardID][]hotstuff.ID
 }
 
 func (e *Experiment) writeAssignmentsFile() (err error) {
@@ -313,22 +353,40 @@ func (e *Experiment) writeAssignmentsFile() (err error) {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "\t")
 	return enc.Encode(assignmentsFileContents{
-		HostsToReplicas: e.hostsToReplicas,
-		HostsToClients:  e.hostsToClients,
+		HostsToReplicas:  e.hostsToReplicas,
+		HostsToClients:   e.hostsToClients,
+		ShardsToReplicas: e.shardsToReplicas,
+		ShardsToClient:   e.shardsToClient,
 	})
 }
 
 func (e *Experiment) startReplicas(cfg *orchestrationpb.ReplicaConfiguration) (err error) {
 	errs := make(chan error)
+	cfgs := make(map[ShardID]map[uint32]*orchestrationpb.ReplicaInfo)
+	for shardID, replicaIDs := range e.shardsToReplicas {
+		shardCfg := make(map[uint32]*orchestrationpb.ReplicaInfo)
+		for _, replica := range replicaIDs {
+			shardCfg[uint32(replica)] = cfg.Replicas[uint32(replica)]
+		}
+		cfgs[shardID] = shardCfg
+	}
 	for host, worker := range e.Hosts {
-		go func(host string, worker RemoteWorker) {
-			req := &orchestrationpb.StartReplicaRequest{
-				Configuration: cfg.GetReplicas(),
-				IDs:           getIDs(host, e.hostsToReplicas),
+		for shardID, shardCfg := range cfgs {
+			ids := make([]uint32, 0)
+			for _, id := range e.shardsToReplicas[shardID] {
+				if e.replicaToHost[id] == host {
+					ids = append(ids, uint32(id))
+				}
 			}
-			_, err := worker.StartReplica(req)
-			errs <- err
-		}(host, worker)
+			go func(host string, worker RemoteWorker, shardID ShardID, shardCfg map[uint32]*orchestrationpb.ReplicaInfo, ids []uint32) {
+				req := &orchestrationpb.StartReplicaRequest{
+					Configuration: shardCfg,
+					IDs:           ids,
+				}
+				_, err := worker.StartReplica(req)
+				errs <- err
+			}(host, worker, shardID, shardCfg, ids)
+		}
 	}
 	for range e.Hosts {
 		err = errors.Join(err, <-errs)
@@ -373,19 +431,32 @@ func verifyStopResponses(responses []*orchestrationpb.StopReplicaResponse) error
 }
 
 func (e *Experiment) startClients(cfg *orchestrationpb.ReplicaConfiguration) error {
-	for host, worker := range e.Hosts {
-		req := &orchestrationpb.StartClientRequest{}
-		req.Clients = make(map[uint32]*orchestrationpb.ClientOpts)
-		req.Configuration = cfg.GetReplicas()
-		req.CertificateAuthority = keygen.CertToPEM(e.ca)
-		for _, id := range e.hostsToClients[host] {
-			clientOpts := proto.Clone(e.ClientOpts).(*orchestrationpb.ClientOpts)
-			clientOpts.ID = uint32(id)
-			req.Clients[uint32(id)] = clientOpts
+	cfgs := make(map[ShardID]map[uint32]*orchestrationpb.ReplicaInfo)
+	for shardID, replicaIDs := range e.shardsToReplicas {
+		shardCfg := make(map[uint32]*orchestrationpb.ReplicaInfo)
+		for _, replica := range replicaIDs {
+			shardCfg[uint32(replica)] = cfg.Replicas[uint32(replica)]
 		}
-		_, err := worker.StartClient(req)
-		if err != nil {
-			return err
+		cfgs[shardID] = shardCfg
+	}
+	for host, worker := range e.Hosts {
+		for shardID, _ := range e.shardsToClient {
+			req := &orchestrationpb.StartClientRequest{}
+			req.Clients = make(map[uint32]*orchestrationpb.ClientOpts)
+			req.Configuration = cfgs[shardID]
+			req.CertificateAuthority = keygen.CertToPEM(e.ca)
+			for _, id := range e.hostsToClients[host] {
+				if e.clientToHost[id] != host {
+					continue
+				}
+				clientOpts := proto.Clone(e.ClientOpts).(*orchestrationpb.ClientOpts)
+				clientOpts.ID = uint32(id)
+				req.Clients[uint32(id)] = clientOpts
+			}
+			_, err := worker.StartClient(req)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
