@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package crossshardpb;
+
+import "gorums.proto";
+
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/relab/hotstuff/internal/proto/crossshardpb";
+
+service CrossShard {
+    rpc Reply(ReplyMsg) returns (google.protobuf.Empty) {
+        option (gorums.unicast) = true;
+    }
+    rpc TXUse(UseMsg) returns (google.protobuf.Empty) {
+        option (gorums.unicast) = true;
+    }
+
+    rpc TXOcu(OcuMsg) returns (google.protobuf.Empty) {
+        option (gorums.unicast) = true;
+    }
+
+    rpc TXOcu2(Ocu2Msg) returns (google.protobuf.Empty) {
+        option (gorums.unicast) = true;
+    }
+}
+
+// message TXRG {
+//     string module           = 1;
+//     int64 n                 = 2;
+//     repeated uint64 rrbList = 3;
+//     bytes cert              = 4;
+// }
+
+message UseMsg {
+    int64 ID                 = 1;
+    repeated uint64 rrbList  = 2;
+    repeated uint64 hprice   = 3;
+    bytes txHash             = 4;
+    bytes signature = 5;
+}
+
+message OcuMsg {
+    int64 ID                 = 1;
+    repeated uint64 vrrbList = 2;
+    repeated uint64 rrbList  = 3;
+    bytes txHash             = 4;
+    bytes signature = 5;
+}
+
+message Ocu2Msg {
+    int64 ID                 = 1;
+    bytes txHash             = 2;
+    bytes signature = 3;
+}
+
+message ReplyMsg {
+    int64 ID                  = 1;
+    bytes txHash              = 2;
+    bytes signature = 3;
+}
+
+message ECDSASignature {
+    uint32 Signer = 1;
+    bytes R       = 2;
+    bytes S       = 3;
+}
+
+message BLS12Signature {
+    bytes Sig = 1;
+}
+
+message Signature {
+    oneof Sig {
+        ECDSASignature ECDSASig = 1;
+        BLS12Signature BLS12Sig = 2;
+    }
+}
+
+message ECDSAMultiSignature {
+    repeated ECDSASignature Sigs = 1;
+}
+
+message BLS12AggregateSignature {
+    bytes Sig          = 1;
+    bytes participants = 2;
+}
+
+message QuorumSignature {
+    oneof Sig {
+        ECDSAMultiSignature ECDSASigs    = 1;
+        BLS12AggregateSignature BLS12Sig = 2;
+    }
+}
