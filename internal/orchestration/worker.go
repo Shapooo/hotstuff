@@ -255,6 +255,15 @@ func (w *Worker) startReplicas(req *orchestrationpb.StartReplicaRequest) (*orche
 			return nil, err
 		}
 
+		crsCfg, err := getCrsConfiguration(req.GetCrsConfiguration())
+		if err != nil {
+			return nil, err
+		}
+		err = replica.ConnectCrs(crsCfg)
+		if err != nil {
+			return nil, err
+		}
+
 		defer func(id uint32) {
 			w.metricsLogger.Log(&types.StartEvent{Event: types.NewReplicaEvent(id, time.Now())})
 			replica.Start()
@@ -354,6 +363,24 @@ func getConfiguration(conf map[uint32]*orchestrationpb.ReplicaInfo, client bool)
 		} else {
 			addr = net.JoinHostPort(replica.GetAddress(), strconv.Itoa(int(replica.GetReplicaPort())))
 		}
+		replicas = append(replicas, backend.ReplicaInfo{
+			ID:      hotstuff.ID(replica.GetID()),
+			Address: addr,
+			PubKey:  pubKey,
+		})
+	}
+	return replicas, nil
+}
+
+func getCrsConfiguration(conf map[uint32]*orchestrationpb.ReplicaInfo) ([]backend.ReplicaInfo, error) {
+	// TODO: check
+	replicas := make([]backend.ReplicaInfo, 0, len(conf))
+	for _, replica := range conf {
+		pubKey, err := keygen.ParsePublicKey(replica.GetPublicKey())
+		if err != nil {
+			return nil, err
+		}
+		addr := net.JoinHostPort(replica.GetAddress(), strconv.Itoa(int(replica.GetCRSReplicaPort())))
 		replicas = append(replicas, backend.ReplicaInfo{
 			ID:      hotstuff.ID(replica.GetID()),
 			Address: addr,
