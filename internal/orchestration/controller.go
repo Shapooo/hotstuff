@@ -363,12 +363,24 @@ func (e *Experiment) writeAssignmentsFile() (err error) {
 func (e *Experiment) startReplicas(cfg *orchestrationpb.ReplicaConfiguration) (err error) {
 	errs := make(chan error)
 	cfgs := make(map[ShardID]map[uint32]*orchestrationpb.ReplicaInfo)
+	crsCfgs := make(map[ShardID]map[uint32]*orchestrationpb.ReplicaInfo)
 	for shardID, replicaIDs := range e.shardsToReplicas {
 		shardCfg := make(map[uint32]*orchestrationpb.ReplicaInfo)
 		for _, replica := range replicaIDs {
 			shardCfg[uint32(replica)] = cfg.Replicas[uint32(replica)]
 		}
 		cfgs[shardID] = shardCfg
+	}
+	for replicaID, shardID := range e.replicaToShard {
+		for shard := range e.shardsToReplicas {
+			if shard == shardID {
+				continue
+			}
+			if crsCfgs[shard] == nil {
+				crsCfgs[shard] = make(map[uint32]*orchestrationpb.ReplicaInfo)
+			}
+			crsCfgs[shard][uint32(replicaID)] = cfg.Replicas[uint32(replicaID)]
+		}
 	}
 	for host, worker := range e.Hosts {
 		for shardID, shardCfg := range cfgs {
@@ -378,14 +390,16 @@ func (e *Experiment) startReplicas(cfg *orchestrationpb.ReplicaConfiguration) (e
 					ids = append(ids, uint32(id))
 				}
 			}
-			go func(host string, worker RemoteWorker, shardID ShardID, shardCfg map[uint32]*orchestrationpb.ReplicaInfo, ids []uint32) {
+			go func(host string, worker RemoteWorker, shardID ShardID, shardCfg map[uint32]*orchestrationpb.ReplicaInfo, crsCfgs map[uint32]*orchestrationpb.ReplicaInfo,
+				ids []uint32) {
 				req := &orchestrationpb.StartReplicaRequest{
-					Configuration: shardCfg,
-					IDs:           ids,
+					Configuration:    shardCfg,
+					CrsConfiguration: crsCfgs,
+					IDs:              ids,
 				}
 				_, err := worker.StartReplica(req)
 				errs <- err
-			}(host, worker, shardID, shardCfg, ids)
+			}(host, worker, shardID, shardCfg, crsCfgs[shardID], ids)
 		}
 	}
 	for range e.Hosts {
@@ -440,7 +454,7 @@ func (e *Experiment) startClients(cfg *orchestrationpb.ReplicaConfiguration) err
 		cfgs[shardID] = shardCfg
 	}
 	for host, worker := range e.Hosts {
-		for shardID, _ := range e.shardsToClient {
+		for shardID := range e.shardsToClient {
 			req := &orchestrationpb.StartClientRequest{}
 			req.Clients = make(map[uint32]*orchestrationpb.ClientOpts)
 			req.Configuration = cfgs[shardID]
