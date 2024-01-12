@@ -137,6 +137,12 @@ func (srv *Replica) Connect(replicas []backend.ReplicaInfo) error {
 	return srv.cfg.Connect(replicas)
 }
 
+// ConnectCrs connects to the other cross-shard servers.
+func (srv *Replica) ConnectCrs(replicas []backend.ReplicaInfo) error {
+	srv.crsSrv.Connect(replicas)
+	return nil
+}
+
 // Start runs the replica in a goroutine.
 func (srv *Replica) Start() {
 	var ctx context.Context
