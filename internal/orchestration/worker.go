@@ -143,11 +143,11 @@ func (w *Worker) createReplicas(req *orchestrationpb.CreateReplicaRequest) (*orc
 		w.replicas[hotstuff.ID(cfg.GetID())] = r
 
 		resp.Replicas[cfg.GetID()] = &orchestrationpb.ReplicaInfo{
-			ID:             cfg.GetID(),
-			PublicKey:      cfg.GetPublicKey(),
-			ReplicaPort:    replicaPort,
-			ClientPort:     clientPort,
-			CRSReplicaPort: crsPort,
+			ID:          cfg.GetID(),
+			PublicKey:   cfg.GetPublicKey(),
+			ReplicaPort: replicaPort,
+			ClientPort:  clientPort,
+			CRSPort:     crsPort,
 		}
 	}
 	return resp, nil
@@ -389,7 +389,7 @@ func getCrsConfiguration(conf map[uint32]*orchestrationpb.ReplicaInfo) ([]backen
 		if err != nil {
 			return nil, err
 		}
-		addr := net.JoinHostPort(replica.GetAddress(), strconv.Itoa(int(replica.GetCRSReplicaPort())))
+		addr := net.JoinHostPort(replica.GetAddress(), strconv.Itoa(int(replica.GetCRSPort())))
 		replicas = append(replicas, backend.ReplicaInfo{
 			ID:      hotstuff.ID(replica.GetID()),
 			Address: addr,
