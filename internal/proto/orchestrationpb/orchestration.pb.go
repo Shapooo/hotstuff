@@ -258,6 +258,8 @@ type ReplicaInfo struct {
 	ReplicaPort uint32 `protobuf:"varint,4,opt,name=ReplicaPort,proto3" json:"ReplicaPort,omitempty"`
 	// The port that clients should connect to.
 	ClientPort uint32 `protobuf:"varint,5,opt,name=ClientPort,proto3" json:"ClientPort,omitempty"`
+	// The port for cross shard transactions that other replicas should connect to.
+	CrossTXPort uint32 `protobuf:"varint,6,opt,name=CrossTXPort,proto3" json:"CrossTXPort,omitempty"`
 }
 
 func (x *ReplicaInfo) Reset() {
