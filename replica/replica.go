@@ -53,6 +53,7 @@ type Replica struct {
 	clientSrv *clientSrv
 	cfg       *backend.Config
 	hsSrv     *backend.Server
+	crsSrv    *CrossShardSrv
 	hs        *modules.Core
 
 	execHandlers map[cmdID]func(*emptypb.Empty, error)
@@ -105,9 +106,11 @@ func New(conf Config, builder modules.Builder) (replica *Replica) {
 	}
 	srv.cfg = backend.NewConfig(creds, managerOpts...)
 
+	srv.crsSrv = NewCrossShardSrv(srv.clientSrv.cmdCache)
 	builder.Add(
-		srv.cfg,   // configuration
-		srv.hsSrv, // event handling
+		srv.crsSrv, // cross-shard server
+		srv.cfg,    // configuration
+		srv.hsSrv,  // event handling
 
 		modules.ExtendedExecutor(srv.clientSrv),
 		modules.ExtendedForkHandler(srv.clientSrv),
