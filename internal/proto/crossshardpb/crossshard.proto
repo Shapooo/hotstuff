@@ -33,30 +33,32 @@ service CrossShard {
 // }
 
 message UseMsg {
-    int64 ID                 = 1;
-    repeated uint64 rrbList  = 2;
-    repeated uint64 hprice   = 3;
-    bytes txHash             = 4;
-    bytes signature = 5;
+    int64 ID = 1;
+    //    repeated uint64 rrbList  = 2;
+    //    repeated uint64 hprice   = 3;
+    bytes content   = 2;
+    bytes txHash    = 3;
+    bytes signature = 4;
 }
 
 message OcuMsg {
-    int64 ID                 = 1;
-    repeated uint64 vrrbList = 2;
-    repeated uint64 rrbList  = 3;
-    bytes txHash             = 4;
-    bytes signature = 5;
+    int64 ID = 1;
+    //    repeated uint64 vrrbList = 2;
+    //    repeated uint64 rrbList  = 3;
+    bytes content   = 2;
+    bytes txHash    = 3;
+    bytes signature = 4;
 }
 
 message Ocu2Msg {
-    int64 ID                 = 1;
-    bytes txHash             = 2;
+    int64 ID        = 1;
+    bytes txHash    = 2;
     bytes signature = 3;
 }
 
 message ReplyMsg {
-    int64 ID                  = 1;
-    bytes txHash              = 2;
+    int64 ID        = 1;
+    bytes txHash    = 2;
     bytes signature = 3;
 }
 
