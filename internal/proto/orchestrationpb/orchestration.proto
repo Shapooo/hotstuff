@@ -67,6 +67,8 @@ message ReplicaInfo {
     uint32 ReplicaPort = 4;
     // The port that clients should connect to.
     uint32 ClientPort = 5;
+    // The port that other replicas in different shards should connect to.
+    uint32 CRSReplicaPort = 6;
 }
 
 message ClientOpts {
